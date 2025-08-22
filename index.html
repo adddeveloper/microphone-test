@@ -17,204 +17,196 @@
 
     <!-- Web App Manifest -->
     <link rel="manifest" href="favicon/site.webmanifest">
-    <title>Camera Test</title>
+    <title>Microphone Test</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>📷 Camera Test</h1>
-            <p>Check if your webcam is connected and working properly</p>
+            <h1>🎤 Microphone Test</h1>
+            <p>Check if your microphone is connected and working properly</p>
         </header>
         
         <div class="test-instructions">
-            <p>Click the start button to begin testing your camera. Make sure to allow camera access when prompted.</p>
+            <p>Click the record button, speak into your microphone, then play back to test</p>
         </div>
         
         <div class="test-area">
-            <button id="startButton" class="test-button">
+            <button id="recordButton" class="test-button">
+                <span>●</span>
+                Record
+            </button>
+            
+            <button id="playButton" class="test-button" disabled>
+                Playback
                 <span>▶</span>
-                Start Camera
-            </button>
-            
-            <button id="stopButton" class="test-button" disabled>
-                <span>⏹</span>
-                Stop Camera
-            </button>
-            
-            <button id="captureButton" class="test-button" disabled>
-                <span>📸</span>
-                Capture Photo
             </button>
         </div>
         
-        <div class="camera-preview">
-            <video id="videoPreview" autoplay playsinline></video>
-            <canvas id="photoCanvas" style="display: none;"></canvas>
+        <div class="visualizer">
+            <canvas id="visualizerCanvas"></canvas>
         </div>
         
         <div class="status" id="statusMessage">
-            Ready to test camera...
-        </div>
-        
-        <div class="photo-preview" id="photoPreviewContainer" style="display: none;">
-            <h3>Captured Photo</h3>
-            <img id="photoPreview" alt="Captured photo">
-            <button id="downloadButton" class="test-button">
-                <span>📥</span>
-                Download Photo
-            </button>
+            Ready to record...
         </div>
         
         <div class="checklist">
             <div>
-                <h2>What to do if you can't see video</h2>
-                <p>Make sure that your camera is properly connected to your computer.</p>
-                <p>Check that your browser has permission to access your camera.</p>
-                <p>Ensure no other application is using your camera.</p>
-                <p>Check that the correct camera is selected in your browser settings.</p>
+                <h2>What to do if you can't record sound</h2>
+                <p>Make sure that your microphone is properly connected to your computer.</p>
+                <p>Check that your browser has permission to access your microphone.</p>
+                <p>Ensure your microphone isn't muted in your system settings.</p>
+                <p>Check that the correct input device is selected in your operating system.</p>
             </div>
             
             <div>
-                <h2>Camera access denied?</h2>
-                <p>Check your browser's permission settings for camera access.</p>
-                <p>Make sure your browser is updated to the latest version.</p>
+                <h2>Recording but no playback?</h2>
+                <p>Make sure your speakers or headphones are properly connected and not muted.</p>
+                <p>Check your system's volume settings for both input and output devices.</p>
             </div>
             
             <div>
                 <h2>All tests failed?</h2>
-                <p>If you tried all the advice on this page and nothing worked, the problem might be with your camera drivers. Try to search for the latest drivers for your camera model.</p>
-                <p>Try testing your camera with another application to verify if it's working.</p>
+                <p>If you tried all the advice on this page and nothing worked, the problem might be with your audio drivers. Try to search for the latest drivers for your sound card.</p>
             </div>
         </div>
         
         <footer>
-            <p>Use this camera test to quickly check your webcam without leaving the browser.</p>
+            <p style="padding: 0; margin:0;">Use this microphone test to quickly check your microphone without leaving the browser.</p>
+            <p>⚠️ This website was made with the help of AI.</p>
         </footer>
     </div>
 
     <script>
         // DOM elements
-        const startButton = document.getElementById('startButton');
-        const stopButton = document.getElementById('stopButton');
-        const captureButton = document.getElementById('captureButton');
-        const downloadButton = document.getElementById('downloadButton');
+        const recordButton = document.getElementById('recordButton');
+        const playButton = document.getElementById('playButton');
         const statusMessage = document.getElementById('statusMessage');
-        const videoPreview = document.getElementById('videoPreview');
-        const photoCanvas = document.getElementById('photoCanvas');
-        const photoPreview = document.getElementById('photoPreview');
-        const photoPreviewContainer = document.getElementById('photoPreviewContainer');
+        const canvas = document.getElementById('visualizerCanvas');
+        const canvasCtx = canvas.getContext('2d');
         
-        // Camera variables
-        let mediaStream = null;
-        let capturedPhotoUrl = null;
+        // Audio variables
+        let audioRecorder;
+        let audioChunks = [];
+        let recordedAudio;
+        let mediaStream;
+        let audioContext;
+        let analyser;
+        let visualizationInterval;
+        
+        // Set up canvas
+        function setupCanvas() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = 80;
+        }
         
         // Initialize the application
         async function init() {
-            // Check if browser supports media devices
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                statusMessage.textContent = "Your browser doesn't support camera access.";
-                startButton.disabled = true;
-                return;
-            }
+            setupCanvas();
             
-            statusMessage.textContent = "Ready to test camera. Click start to begin.";
-        }
-        
-        // Start camera
-        async function startCamera() {
             try {
-                statusMessage.textContent = "Accessing camera...";
+                // Request microphone access
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                statusMessage.textContent = "Microphone access granted. Click record to start.";
                 
-                // Request camera access
-                mediaStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 } 
-                    }, 
-                    audio: false 
-                });
+                // Set up audio context and analyser for visualization
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                source.connect(analyser);
+                analyser.fftSize = 256;
                 
-                // Show video stream
-                videoPreview.srcObject = mediaStream;
+                // Set up audio recorder
+                audioRecorder = new MediaRecorder(mediaStream);
                 
-                // Enable buttons
-                stopButton.disabled = false;
-                captureButton.disabled = false;
-                startButton.disabled = true;
+                // Event handlers for recording
+                audioRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
                 
-                statusMessage.textContent = "Camera is active. You should see yourself above.";
+                audioRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    recordedAudio = URL.createObjectURL(audioBlob);
+                    playButton.disabled = false;
+                    statusMessage.textContent = "Recording complete. Click play to listen.";
+                    stopVisualization();
+                };
                 
             } catch (error) {
-                console.error("Error accessing camera:", error);
-                statusMessage.textContent = "Error accessing camera: " + error.message;
+                statusMessage.textContent = "Error accessing microphone: " + error.message;
+                recordButton.disabled = true;
             }
         }
         
-        // Stop camera
-        function stopCamera() {
-            if (mediaStream) {
-                mediaStream.getTracks().forEach(track => track.stop());
-                mediaStream = null;
+        // Start visualization
+        function startVisualization() {
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            function draw() {
+                visualizationInterval = requestAnimationFrame(draw);
+                analyser.getByteFrequencyData(dataArray);
+                
+                canvasCtx.fillStyle = 'rgb(245, 245, 245)';
+                canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                const barWidth = (canvas.width / bufferLength) * 2.5;
+                let barHeight;
+                let x = 0;
+                
+                for(let i = 0; i < bufferLength; i++) {
+                    barHeight = dataArray[i] / 2;
+                    
+                    canvasCtx.fillStyle = 'rgb(' + (barHeight + 100) + ', 50, 50)';
+                    canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+                    
+                    x += barWidth + 1;
+                }
             }
             
-            videoPreview.srcObject = null;
-            
-            // Reset buttons
-            startButton.disabled = false;
-            stopButton.disabled = true;
-            captureButton.disabled = true;
-            
-            statusMessage.textContent = "Camera stopped. Click start to test again.";
+            draw();
         }
         
-        // Capture photo
-        function capturePhoto() {
-            if (!mediaStream) return;
-            
-            // Set canvas dimensions to match video
-            const videoWidth = videoPreview.videoWidth;
-            const videoHeight = videoPreview.videoHeight;
-            photoCanvas.width = videoWidth;
-            photoCanvas.height = videoHeight;
-            
-            // Draw current video frame to canvas
-            const context = photoCanvas.getContext('2d');
-            context.drawImage(videoPreview, 0, 0, videoWidth, videoHeight);
-            
-            // Convert to data URL and display
-            capturedPhotoUrl = photoCanvas.toDataURL('image/png');
-            photoPreview.src = capturedPhotoUrl;
-            photoPreviewContainer.style.display = 'block';
-            
-            statusMessage.textContent = "Photo captured!";
-            
-            // Scroll to photo preview
-            photoPreviewContainer.scrollIntoView({ behavior: 'smooth' });
+        // Stop visualization
+        function stopVisualization() {
+            cancelAnimationFrame(visualizationInterval);
+            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
         }
         
-        // Download photo
-        function downloadPhoto() {
-            if (!capturedPhotoUrl) return;
-            
-            const downloadLink = document.createElement('a');
-            downloadLink.href = capturedPhotoUrl;
-            downloadLink.download = 'camera-test-photo.png';
-            document.body.appendChild(downloadLink);
-            downloadLink.click();
-            document.body.removeChild(downloadLink);
-            
-            statusMessage.textContent = "Photo downloaded!";
-        }
+        // Toggle recording
+        recordButton.addEventListener('click', () => {
+            if (audioRecorder.state === 'recording') {
+                audioRecorder.stop();
+                recordButton.innerHTML = '<span>●</span> Record';
+                recordButton.style.backgroundColor = '';
+            } else {
+                audioChunks = [];
+                audioRecorder.start();
+                recordButton.innerHTML = '<span>⏹</span> Stop';
+                recordButton.style.backgroundColor = 'var(--red)';
+                playButton.disabled = true;
+                statusMessage.textContent = "Recording... Speak into your microphone.";
+                startVisualization();
+            }
+        });
         
-        // Event listeners
-        startButton.addEventListener('click', startCamera);
-        stopButton.addEventListener('click', stopCamera);
-        captureButton.addEventListener('click', capturePhoto);
-        downloadButton.addEventListener('click', downloadPhoto);
+        // Play recorded audio
+        playButton.addEventListener('click', () => {
+            if (recordedAudio) {
+                const audio = new Audio(recordedAudio);
+                audio.play();
+                statusMessage.textContent = "Playing back recorded audio...";
+                
+                audio.onended = () => {
+                    statusMessage.textContent = "Playback complete. Record again if needed.";
+                };
+            }
+        });
         
         // Initialize on load
         window.addEventListener('load', init);
+        window.addEventListener('resize', setupCanvas);
     </script>
 </body>
 </html>
